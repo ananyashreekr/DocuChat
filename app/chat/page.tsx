@@ -16,14 +16,24 @@ import styles from "@/styles/styles.module.css";
 import { HoverInfo } from "@/components/HoverInfo";
 import { Audio } from "react-loader-spinner";
 
+// Define the interface for file response
+interface FileResponse {
+  parsedText: string;
+  fileName?: string;
+  fileSize?: number;
+  textLength?: number;
+  numPages?: number;
+  error?: string;
+}
+
 export default function FileUpload() {
-  const [fileResponse, setFileResponse] = useState(null);
+  const [fileResponse, setFileResponse] = useState<FileResponse | null>(null);
   const [prompt, setPrompt] = useState("");
-  const [response, setResponse] = useState("");
+  const [aiResponse, setAiResponse] = useState(""); // Renamed from 'response' to avoid conflicts
   const [output, setOutput] = useState("The response will appear here...");
   const [showHoverInfo, setShowHoverInfo] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [screenColor] = useState("black");
+  const screenColor = "black"; // Removed unused setter
 
   const uploadOptions = {
     loop: true,
@@ -34,7 +44,7 @@ export default function FileUpload() {
     },
   };
 
-  const Notify = (status: string, message: string) => {
+  const notify = (status: string, message: string) => {
     toast.dismiss();
     if (status === "success") {
       toast.success(message);
@@ -43,60 +53,45 @@ export default function FileUpload() {
     }
   };
 
-  const onKeyDown = (e: any) => {
-    // Check if the Ctrl key is pressed along with the Enter key
+  const onKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === "Enter") {
-      // Prevent the default behavior of the Enter key (e.g., new line in textarea)
       e.preventDefault();
-      // Trigger the onSubmit function
       onSubmit();
     }
   };
 
-  const onFileChange = (e: any) => {
-    // Get the file
-    const file = e.target.files[0];
-    // Check if the file is null
+  const onFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
     if (!file) {
       toast.error("No file selected!");
       return;
     }
-    // Check if the file type is supported
     if (!file.type.includes("text")) {
       toast.error("File type not supported!");
       return;
     }
-    // Read the file
+    
     const reader = new FileReader();
     reader.readAsText(file, "UTF-8");
-    // On reader load
     reader.onload = (readerEvent) => {
-      // @ts-expect-error - getting unwanted error
-      setPrompt(readerEvent.target?.result || "done");
+      const result = readerEvent.target?.result;
+      setPrompt(typeof result === "string" ? result : "");
     };
   };
 
   const copyToClipboard = () => {
-    // Copy the output to the clipboard
     navigator.clipboard.writeText(output);
     toast.success("Copied to clipboard!");
   };
 
   const downloadFile = () => {
-    // Create a new blob
     const blob = new Blob([output], { type: "text/plain" });
-    // Create a new URL
     const url = window.URL.createObjectURL(blob);
-    // Create a new anchor tag
     const anchor = document.createElement("a");
-    // Set the href and download attributes for the anchor tag
     anchor.href = url;
     anchor.download = "chat.txt";
-    // Click the anchor tag programmatically
     anchor.click();
-    // Remove the anchor tag from the body
     anchor.remove();
-    // Revoke the URL
     window.URL.revokeObjectURL(url);
     toast.success("Downloaded the output as a text file!");
   };
@@ -114,57 +109,87 @@ export default function FileUpload() {
       return;
     }
 
-    // clear the output
+    // Check if fileResponse is null
+    if (!fileResponse) {
+      toast.error("Please upload a file first!");
+      return;
+    }
+
+    // Check if parsedText exists
+    if (!fileResponse.parsedText || fileResponse.parsedText.trim() === "") {
+      toast.error("No text found in the uploaded file!");
+      return;
+    }
+
+    // Clear the output
     setOutput("The response will appear here...");
 
     setLoading(true);
     toast.loading("Chatting with the AI...");
 
     const userPrompt = `Answer the question '${prompt}' based on the following text extracted from the provided PDF: ${fileResponse.parsedText}. If you cannot find the data related to the question, please write 'The PDF is your resume highlighting your academic background in AI & ML, technical skills, and project experience.'. If the question is related to summarization, please write a summary of the text.`;
-    // Debug logging
-    console.log("fileResponse:", fileResponse);
-    console.log("parsedText:", fileResponse.parsedText);
-    console.log("userPrompt:", userPrompt);
 
+    try {
+      // Debug logging
+      console.log("fileResponse:", fileResponse);
+      console.log("parsedText:", fileResponse.parsedText);
+      console.log("userPrompt:", userPrompt);
 
+      const apiResponse = await fetch("/api/chat", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          userPrompt: userPrompt,
+        }),
+      });
 
-    const response = await fetch("api/chat", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        userPrompt: userPrompt,
-      }),
-    });
+      if (!apiResponse.ok) {
+        throw new Error(`HTTP error! status: ${apiResponse.status}`);
+      }
 
-    // get the response from the server
-    const data = await response.json();
+      // Get the response from the server
+      const data = await apiResponse.json();
 
-    setLoading(false);
-    toast.dismiss();
+      setLoading(false);
+      toast.dismiss();
 
-    if (data.text === "Unable to process the prompt. Please try again.") {
-      toast.error("Unable to process the prompt. Please try again.");
-      return;
+      // Handle both 'text' and 'parsedText' properties from API response
+      const responseText = data.text || data.parsedText || '';
+      
+      if (responseText === "Unable to process the prompt. Please try again.") {
+        toast.error("Unable to process the prompt. Please try again.");
+        return;
+      }
+
+      if (!responseText) {
+        toast.error("No response received from AI. Please try again.");
+        return;
+      }
+
+      // Set the response in the state
+      setAiResponse(responseText);
+    } catch (error) {
+      setLoading(false);
+      toast.dismiss();
+      toast.error("Failed to process request. Please try again.");
+      console.error("Error:", error);
     }
-
-    // set the response in the state
-    setResponse(data.text);
   };
 
   useEffect(() => {
-    // update the response character by character in the output
-    if (response.length === 0) return;
+    // Update the response character by character in the output
+    if (aiResponse.length === 0) return;
 
     setOutput("");
 
-    for (let i = 0; i < response.length; i++) {
+    for (let i = 0; i < aiResponse.length; i++) {
       setTimeout(() => {
-        setOutput((prev) => prev + response[i]);
+        setOutput((prev) => prev + aiResponse[i]);
       }, i * 10);
     }
-  }, [response]);
+  }, [aiResponse]);
 
   return (
     <div>
@@ -180,18 +205,47 @@ export default function FileUpload() {
               url: "/api/upload",
               method: "POST",
               withCredentials: false,
-              onload: (response) => {
-                // parse the json response
-                const fileResponse = JSON.parse(response);
-                toast.dismiss();
-                toast.success("file processed");
-                setFileResponse(fileResponse);
-                return response; // Return the response to FilePond
+              onload: (serverResponse) => {
+                console.log("=== FILE UPLOAD DEBUG ===");
+                console.log("Raw response from server:", serverResponse);
+                
+                try {
+                  const fileResp: FileResponse = JSON.parse(serverResponse);
+                  console.log("Parsed file response:", fileResp);
+                  console.log("Response keys:", Object.keys(fileResp));
+                  
+                  if (fileResp.error) {
+                    toast.dismiss();
+                    toast.error(`Upload failed: ${fileResp.error}`);
+                    console.error("Server returned error:", fileResp);
+                    return serverResponse;
+                  }
+                  
+                  toast.dismiss();
+                  
+                  const hasText = fileResp.parsedText && fileResp.parsedText.trim().length > 0;
+                  
+                  if (hasText) {
+                    toast.success("File processed successfully!");
+                  } else {
+                    toast.success("File uploaded, but no text extracted. Check console for details.");
+                  }
+                  
+                  setFileResponse(fileResp);
+                  return serverResponse;
+                } catch (error) {
+                  toast.dismiss();
+                  toast.error("Failed to parse file response");
+                  console.error("Parse error:", error);
+                  console.log("Raw response that failed to parse:", serverResponse);
+                  return serverResponse;
+                }
               },
-              onerror: (response) => {
+              onerror: (errorResponse) => {
                 toast.dismiss();
                 toast.error("file processing failed");
-                return response; // Return the error to FilePond
+                console.error("File processing error:", errorResponse);
+                return errorResponse;
               },
             },
             fetch: null,
@@ -219,10 +273,10 @@ export default function FileUpload() {
                     onChange={(e) => {
                       setPrompt(e.target.value);
                     }}
-                    onKeyDown={(e) => onKeyDown(e)}
+                    onKeyDown={onKeyDown}
                   />
                   <button
-                    onClick={() => onSubmit()}
+                    onClick={onSubmit}
                     className="absolute top-3 right-3 hover:scale-110 transition ease-in-out"
                     onMouseEnter={() =>
                       showHoverNotification("Click to chat with the AI.")
@@ -237,7 +291,7 @@ export default function FileUpload() {
                 </div>
                 <Input
                   type="file"
-                  onChange={(e) => onFileChange(e)}
+                  onChange={onFileChange}
                   className="hidden"
                 />
                 <Button
@@ -247,7 +301,7 @@ export default function FileUpload() {
                     const fileInput = document.querySelector(
                       "input[type=file]"
                     ) as HTMLInputElement;
-                    fileInput.click();
+                    fileInput?.click();
                   }}
                   onMouseEnter={() =>
                     showHoverNotification(
@@ -274,7 +328,7 @@ export default function FileUpload() {
                   <Button
                     variant="outline"
                     className={cn("w-[40px] p-1")}
-                    onClick={() => copyToClipboard()}
+                    onClick={copyToClipboard}
                     onMouseEnter={() =>
                       showHoverNotification("Copy the output to the clipboard.")
                     }
@@ -284,7 +338,7 @@ export default function FileUpload() {
                   <Button
                     variant="outline"
                     className={cn("w-[40px] p-1")}
-                    onClick={() => downloadFile()}
+                    onClick={downloadFile}
                     onMouseEnter={() =>
                       showHoverNotification(
                         "Download the output as a text file."
@@ -303,7 +357,7 @@ export default function FileUpload() {
             <p>Supported file types: PDF</p>
             <div
               className="h-[260px] w-[260px]"
-              onClick={() => Notify("success", "upload a pdf")}
+              onClick={() => notify("success", "upload a pdf")}
             >
               <Lottie options={uploadOptions} height={260} width={260} />
             </div>
