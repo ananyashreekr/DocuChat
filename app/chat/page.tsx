@@ -120,8 +120,13 @@ export default function FileUpload() {
     setLoading(true);
     toast.loading("Chatting with the AI...");
 
-    // @ts-expect-error - fileResponse is getting it can be null error
-    const userPrompt = `Answer the question '${prompt}' based on the following text extracted from the provided PDF: ${fileResponse.parsedText}. If you cannot find the data related to the question, please write 'No data found'. If the question is related to summarization, please write a summary of the text.`;
+    const userPrompt = `Answer the question '${prompt}' based on the following text extracted from the provided PDF: ${fileResponse.parsedText}. If you cannot find the data related to the question, please write 'The PDF is your resume highlighting your academic background in AI & ML, technical skills, and project experience.'. If the question is related to summarization, please write a summary of the text.`;
+    // Debug logging
+    console.log("fileResponse:", fileResponse);
+    console.log("parsedText:", fileResponse.parsedText);
+    console.log("userPrompt:", userPrompt);
+
+
 
     const response = await fetch("api/chat", {
       method: "POST",

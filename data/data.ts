@@ -1,7 +1,7 @@
 const Data = {
   socials: {
-    linkedin: "https://www.linkedin.com/in/rajesh-kanugu-aba8a3254/",
-    github: "https://github.com/kanugurajesh",
+    linkedin: "https://www.linkedin.com/in/ananya-shree-kr-5a0623264/",
+    github: "https://github.com/ananyashreekr",
   },
 };
 

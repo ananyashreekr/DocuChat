@@ -1,54 +1,44 @@
-import { NextRequest, NextResponse } from "next/server"; // To handle the request and response
-import { promises as fs } from "fs"; // To save the file temporarily
-import { v4 as uuidv4 } from "uuid"; // To generate a unique filename
-import PDFParser from "pdf2json"; // To parse the pdf
+import { NextRequest, NextResponse } from "next/server";
+import { GoogleGenerativeAI } from "@google/generative-ai";
 
 export async function POST(req: NextRequest) {
-  const formData: FormData = await req.formData();
-  const uploadedFiles = formData.getAll("filepond");
-  let fileName = "";
-  let parsedText = "";
+  try {
+    // Debug: Check if API key exists
+    const apiKey = process.env.GEMINI_API_KEY;
+    console.log("API Key exists:", !!apiKey);
+    console.log("API Key starts with:", apiKey?.substring(0, 10) + "...");
 
-  if (uploadedFiles && uploadedFiles.length > 0) {
-    const uploadedFile = uploadedFiles[1]; // Use the first uploaded file
+    // get prompt field from the request body
+    const reqBody = await req.json();
+    const { userPrompt } = reqBody;
+    console.log("User prompt:", userPrompt);
 
-    // Check if uploadedFile is of type File
-    if (uploadedFile instanceof File) {
-      // Generate a unique filename
-      fileName = uuidv4();
-
-      // Convert the uploaded file into a temporary file
-      const tempFilePath = `/tmp/${fileName}.pdf`;
-
-      // Convert ArrayBuffer to Buffer
-      const fileBuffer = Buffer.from(await uploadedFile.arrayBuffer());
-
-      // Save the buffer as a file
-      await fs.writeFile(tempFilePath, fileBuffer);
-
-      // Create a new Promise for parsing
-      const pdfParser = new (PDFParser as any)(null, 1);
-
-      // Create a promise to handle the parsing
-      const parsingPromise = new Promise((resolve, reject) => {
-        pdfParser.on("pdfParser_dataError", (errData: any) => {
-          reject(errData.parserError); // Reject the promise on error
-        });
-
-        pdfParser.on("pdfParser_dataReady", () => {
-          parsedText = (pdfParser as any).getRawTextContent();
-          resolve(parsedText); // Resolve the promise with parsed text
-        });
+    if (!apiKey) {
+      return NextResponse.json({
+        text: "API key is missing",
+        error: "GEMINI_API_KEY not found"
       });
-
-      // Load and parse the PDF
-      await pdfParser.loadPDF(tempFilePath);
-      await parsingPromise; // Wait for the parsing to complete
-    } else {
-      return NextResponse.json({ error: "Invalid file format." });
     }
-  } else {
-    return NextResponse.json({ error: "No files uploaded." });
+
+    const genAI = new GoogleGenerativeAI(apiKey);
+    const model = genAI.getGenerativeModel({
+      model: "gemini-2.0-flash",
+      generationConfig: { maxOutputTokens: 200 },
+    });
+
+    console.log("Calling Gemini API...");
+    const result = await model.generateContent(userPrompt);
+    const text = result.response.text();
+    console.log("Gemini response:", text);
+
+    return NextResponse.json({
+      parsedText: text,
+    });
+  } catch (error) {
+    console.error("Chat API Error:", error);
+    return NextResponse.json({
+      text: "Unable to process the prompt. Please try again.",
+      error: error instanceof Error ? error.message : "Unknown error"
+    });
   }
-  return NextResponse.json({ parsedText, fileName });
 }

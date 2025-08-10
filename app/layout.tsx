@@ -15,7 +15,7 @@ const geistMono = localFont({
 });
 
 export const metadata: Metadata = {
-  title: "DocuMate",
+  title: "DocuChat",
   description: "An application to chat with ",
 };
 
