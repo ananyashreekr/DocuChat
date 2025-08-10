@@ -23,7 +23,7 @@ export default function FileUpload() {
   const [output, setOutput] = useState("The response will appear here...");
   const [showHoverInfo, setShowHoverInfo] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [screenColor, setScreenColor] = useState("black");
+  const [screenColor] = useState("black");
 
   const uploadOptions = {
     loop: true,

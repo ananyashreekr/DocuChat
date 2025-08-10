@@ -44,7 +44,7 @@ export default function NotFoundPage() {
     setTimeout(() => {
       router.push("/home");
     }, 3000);
-  }, []);
+  }, [router]);
 
   return (
     <div className="h-screen bg-black relative">
